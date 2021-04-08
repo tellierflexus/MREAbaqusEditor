@@ -128,6 +128,13 @@ $INSTANCE$.$ELSET$,<magFieldVecZ>
 *Field, variable=4, amplitude=magFieldMagAmp
 $INSTANCE$.$ELSET$,1.0
 ************************************************************************\n"""
+
+section_dummy = """** Section: Section-dummy_mesh
+*Solid Section, elset=$elset$_dummy_mesh, material=Material-polymer_dummy_mesh\n,\n"""
+
+material_dummy = """*Material, name=Material-polymer_dummy_mesh
+*Hyperelastic, neo hooke
+0.0000001, 0.3\n"""
 """
 
 
@@ -175,6 +182,9 @@ applied_field = re.sub( r'(?:[$]ELSET[$])',  elset, applied_field)
 
 materials = re.sub( r'(?:[$]INSTANCE[$])',  Instance, materials)
 materials = re.sub( r'(?:[$]ELSET[$])',  elset, materials)
+
+section_dummy = re.sub(r'(?:[$]elset[$])', elset, section_dummy)
+dummy_element_header = "*Element, type=C3D8RH\n"
 """
 
 
@@ -184,12 +194,27 @@ materials = re.sub( r'(?:[$]ELSET[$])',  elset, materials)
 
 """
 
+def add_ten_thousand(line):
+	id = int(line.expand(r'\1'))
+	id = str(id + 10000)
+	return id + line.expand(r'\2')
+
 content = re.sub(r'((?:[*]{2}\s[*]{2}\sPARTS\n))', parameters + r'\1', content)
 content = re.sub(r'(?:[*]Element,\stype=C3D8RH)',element, content)
-#if (~args.dummy):
-#	dummy_mesh=''
+if (not args.dummy):
+	dummy_mesh=''
+	section_dummy = ''
+	material_dummy = ''
 #print(args.dummy)
-content = re.sub(r'(?:[*]{2}\sSection:.+\s.+\s,\s)', dummy_mesh, content) # Add the dummy mesh elset
+
+#Adding new elements : 
+match = re.search(r'([*]Element, type=.+\s)([^*]+)', content)
+if match:
+	new_elements = match.expand(r'\2')
+	new_elements = re.sub(r'([0-9]{1,})(.+)', add_ten_thousand, new_elements)
+	content = re.sub(r'([*]Element, type=.+\s)([^*]+)', r'\1\2' + dummy_element_header + new_elements, content)
+
+content = re.sub(r'(?:[*]{2}\sSection:.+\s.+\s,\s)', dummy_mesh + section_dummy, content) # Add the dummy mesh elset
 
 match = re.search(r'(?:[*]Surface.+name=(.+)\s.+\s)', content) #Detection of a surface
 if match:
@@ -198,7 +223,7 @@ if match:
 	content = re.sub(r'(?:[*]Dsload(.+\s){2})', '', content) #Deletion of Distributed surface load definition (temporary)
 
 content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sSTEP:(\s.+){5}\s))',initials_conditions + r'\1' + applied_field, content ) #Add initial conditions then applied fied to step
-content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sMATERIALS\s.+\s))',r'\1' + materials, content ) # Add definitions of new materials to the file
+content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sMATERIALS\s.+\s))',r'\1' +materials + material_dummy, content) # Add definitions of new materials to the file
 
 try:
 	with open(filename + '_modified.inp', 'w') as inp_file:
