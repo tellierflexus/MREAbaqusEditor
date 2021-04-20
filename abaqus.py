@@ -2,6 +2,8 @@ import re
 import argparse
 import sys
 
+lastElementNumber = 10000;
+
 parser = argparse.ArgumentParser(description='Edit an abaqus input file to add magnetic behavior of materials')
 parser.add_argument('file', action='store', help='Specify the name of the input file')
 parser.add_argument('--dummy', const=True, default=False, action='store_const', help='Add a dummy mesh')
@@ -83,7 +85,7 @@ element = """*******************************************************************
 ************************************************************************
 *Element, type=U3"""
 
-dummy_mesh = "*Elset, elset=$elset$_dummy_mesh, generate\n10001, $LastDummyElement$, 1\n"
+dummy_mesh = "*Elset, elset=$elset$_dummy_mesh, generate\n$FirstDummyElement$, $LastDummyElement$, 1\n"
 
 materials = """******************************************************************
 *uel property,elset=$INSTANCE$.$ELSET$
@@ -171,7 +173,7 @@ else:
 	print("No Instance found, exiting...")
 	exit()
 
-dummy_mesh = re.sub(r'(?:[$]LastDummyElement[$])', str(10001 + nbrOfElem), dummy_mesh)
+
 dummy_mesh = re.sub(r'(?:[$]elset[$])', elset, dummy_mesh)
 
 initials_conditions = re.sub( r'(?:[$]INSTANCE[$])',  Instance, initials_conditions)
@@ -194,9 +196,9 @@ dummy_element_header = "*Element, type=C3D8RH\n"
 
 """
 
-def add_ten_thousand(line):
+def increase_number(line):
 	id = int(line.expand(r'\1'))
-	id = str(id + 10000)
+	id = str(id + lastElementNumber)
 	return id + line.expand(r'\2')
 
 content = re.sub(r'((?:[*]{2}\s[*]{2}\sPARTS\n))', parameters + r'\1', content)
@@ -207,20 +209,50 @@ if (not args.dummy):
 	material_dummy = ''
 #print(args.dummy)
 
+"""
+
+
+		Dummy elements parts
+
+
+
+"""
+
+
 #Adding new elements : 
 match = re.search(r'([*]Element, type=.+\s)([^*]+)', content)
 if match:
 	new_elements = match.expand(r'\2')
-	new_elements = re.sub(r'([0-9]{1,})(.+)', add_ten_thousand, new_elements)
+	#Find the last element number
+	for match in re.finditer(r'([0-9]{1,})(.+)',new_elements):
+		#if I remove this line it doesn't work
+		pass
+
+	lastElementNumber =  int(match.expand(r'\1')) #We get the last element of the "user element mesh"
+	new_elements = re.sub(r'([0-9]{1,})(.+)', increase_number, new_elements)
 	content = re.sub(r'([*]Element, type=.+\s)([^*]+)', r'\1\2' + dummy_element_header + new_elements, content)
 
+dummy_mesh = re.sub(r'(?:[$]LastDummyElement[$])', str(lastElementNumber + 1 + nbrOfElem), dummy_mesh)
+dummy_mesh = re.sub(r'(?:[$]FirstDummyElement[$])', str(lastElementNumber + 1), dummy_mesh)
 content = re.sub(r'(?:[*]{2}\sSection:.+\s.+\s,\s)', dummy_mesh + section_dummy, content) # Add the dummy mesh elset
 
-match = re.search(r'(?:[*]Surface.+name=(.+)\s.+\s)', content) #Detection of a surface
+
+"""
+
+
+		Transfering surface to dummy elements
+
+
+
+"""
+
+match = re.search(r'(?:([*]Elset.+)([^*]+)([*]Surface.+name=(.+)\s.+\s))', content) #Detection of a surface
 if match:
-	Surface = match.expand(r'\1')
-	content = re.sub(r'(?:[*]Surface.+name=(.+)\s.+\s)', '', content) #Deletion of surface definition
-	content = re.sub(r'(?:[*]Dsload(.+\s){2})', '', content) #Deletion of Distributed surface load definition (temporary)
+	Surface = match.expand(r'\4')
+	Surface_elements = match.expand(r'\2')
+	Surface_elements = re.sub(r'([0-9]+)()' ,increase_number, Surface_elements)
+	content = re.sub(r'(?:([*]Elset.+)([^*]+)([*]Surface.+name=(.+)\s.+\s))', match.expand(r'\1' + Surface_elements + r'\3'), content) #Deletion of surface definition
+	#content = re.sub(r'(?:[*]Dsload(.+\s){2})', '', content) #Deletion of Distributed surface load definition (temporary)
 
 content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sSTEP:(\s.+){5}\s))',initials_conditions + r'\1' + applied_field, content ) #Add initial conditions then applied fied to step
 content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sMATERIALS\s.+\s))',r'\1' +materials + material_dummy, content) # Add definitions of new materials to the file
