@@ -201,6 +201,14 @@ def increase_number(line):
 	id = str(id + lastElementNumber)
 	return id + line.expand(r'\2')
 
+def increase_surface_number(line):
+	return str(int(line.expand(r'\1')) + lastElementNumber)
+
+def modify_surface(line):
+	nbrs = re.sub(r'([0-9]+)',increase_surface_number,line.expand(r'\2'))
+	return line.expand(r'\1') + nbrs + line.expand(r'\3')
+
+
 content = re.sub(r'((?:[*]{2}\s[*]{2}\sPARTS\n))', parameters + r'\1', content)
 content = re.sub(r'(?:[*]Element,\stype=C3D8RH)',element, content)
 if (not args.dummy):
@@ -225,7 +233,6 @@ if match:
 	new_elements = match.expand(r'\2')
 	#Find the last element number
 	for match in re.finditer(r'([0-9]{1,})(.+)',new_elements):
-		#if I remove this line it doesn't work
 		pass
 
 	lastElementNumber =  int(match.expand(r'\1')) #We get the last element of the "user element mesh"
@@ -246,13 +253,8 @@ content = re.sub(r'(?:[*]{2}\sSection:.+\s.+\s,\s)', dummy_mesh + section_dummy,
 
 """
 
-match = re.search(r'(?:([*]Elset.+)([^*]+)([*]Surface.+name=(.+)\s.+\s))', content) #Detection of a surface
-if match:
-	Surface = match.expand(r'\4')
-	Surface_elements = match.expand(r'\2')
-	Surface_elements = re.sub(r'([0-9]+)()' ,increase_number, Surface_elements)
-	content = re.sub(r'(?:([*]Elset.+)([^*]+)([*]Surface.+name=(.+)\s.+\s))', match.expand(r'\1' + Surface_elements + r'\3'), content) #Deletion of surface definition
-	#content = re.sub(r'(?:[*]Dsload(.+\s){2})', '', content) #Deletion of Distributed surface load definition (temporary)
+content = re.sub(r'(?:([*]Elset.+)([^*]+)([*]Surface.+name=(.+)\s.+\s))',modify_surface, content)
+
 
 content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sSTEP:(\s.+){5}\s))',initials_conditions + r'\1' + applied_field, content ) #Add initial conditions then applied fied to step
 content = re.sub(r'((?:[*]{2}\s\n[*]{2}\sMATERIALS\s.+\s))',r'\1' +materials + material_dummy, content) # Add definitions of new materials to the file
